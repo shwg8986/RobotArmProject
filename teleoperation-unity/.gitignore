@@ -1,0 +1,11 @@
+.idea/
+Recordings/
+Library/
+Logs/
+obj/
+Temp/
+OptiData/
+UserSettings/
+
+*.csproj
+*.sln

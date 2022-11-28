@@ -1,0 +1,352 @@
+<html lang="ja">
+    <head>
+        <meta charset="utf-8" />
+
+		<!-- Embed latest version of Babylon.js. -->
+		<!-- <script src="https://cdn.babylonjs.com/babylon.js"></script> -->
+        <script src="./Babylon.js/babylon.js"></script>
+
+		<!-- Embed Babylon loader scripts for .gltf and other filetypes. -->
+		<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+
+		<!-- Embed pep.js for consistent cross-browser pointer events. -->
+		<script src="https://code.jquery.com/pep/0.4.3/pep.js"></script>
+
+        <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+
+        <!-- <script src="./Babylon.js/dist/gui/babylon.gui.min.js"></script> -->
+        <!-- <script src="./Babylon.js/dist/gui/babylon.gui.js.map"></script> -->
+        <title>VRSJ Local Sora</title>
+    </head>
+
+    <body>
+        <button onclick="connect_clicked();" style="width: 150px; height: 50px; margin: 10px"><font size="5">ReConnect</font></button><br>
+
+        <div id="remote-videos">
+            <video id="robotarm_dummy_video"></video>
+        </div>
+        <main style="margin: 0; padding: 0;">
+            <div class="RobotArmStatus" style="float: left; width: 50%; height: 250px; background-color: #ddd;">
+                Robot Arm status <br>
+                <font size="4">
+                    <pre><div id="a1ss"></div></pre>
+                </font>
+                <br>
+            </div>
+            <div class="SegwayStatus" style="float: right; width: 50%; height: 250px; background-color: #eee;">
+                Segway RMP status <br>
+                <font size="4">
+                    <pre><div id="sgss"></div></pre>
+                </font>
+                <br>
+            </div>
+        </main>
+
+		<!-- Babylon.js のレンダリング内容を表示するための Canvas タグ-->
+		<canvas id="renderCanvas" style="border: 3px solid gray; width: 100%; display: inline-block;"></canvas>
+        <script type="text/javascript">
+            let CLOSE_DATA_CHANNEL = false;
+        </script>
+        <script type="text/javascript" src="./sora.js"></script>
+        <script type="text/javascript">
+
+            // let localrecvonly_robot_arm = new localrecvonly("robotarm_dummy_video", "ws://192.168.10.209:8080/ws");
+            // setTimeout(() => {
+            //     localrecvonly_robot_arm.connect();
+            // }, 1000);
+
+            let ws = new WebSocket("ws://localhost:9001/ws");
+
+            // Set event handlers.
+            ws.onopen = function() {
+                console.log("onopen");
+            };
+            
+            ws.onmessage = function(e) {
+                // e.data contains received string.
+                console.log("onmessage: " + e.data);
+            };
+            
+            ws.onclose = function() {
+                console.log("onclose");
+            };
+
+            ws.onerror = function(e) {
+                console.log(e)
+            };
+
+            setInterval(observe_ws_readyState, 1000)
+            function observe_ws_readyState() {
+                if (ws.readyState == 3) {
+                    ws = new WebSocket("ws://localhost:9001/ws");
+                }
+            }
+
+
+            const debug = true;
+            const sora = Sora.connection("ws://192.168.10.156:5000/signaling", debug);
+
+            const options_control = {
+                multistream : true,
+                video : false,
+                audio : true,
+                dataChannelSignaling : true,
+                dataChannels : [
+                    {
+                        label : "#sora-devtools",
+                        direction : "sendrecv"
+                    }
+                ]
+            };
+
+            let recvonly_haptics = sora.recvonly("haptics", null, options_control);
+
+            setTimeout(() => {
+                recvonly_haptics.connect();
+            }, 1000);
+            
+            let motionController_right = null;
+            recvonly_haptics.on('message', (e) => {
+                // console.log(new Int8Array(e.data)[0]);
+                pulse_raw = new Int8Array(e.data)[0] / 127
+                pulse_sigmoid = Math.asinh((2*pulse_raw-1)*Math.sinh(1)) / 2 + 0.5
+                pulse_length = pulse_sigmoid >= 0.8 ? 0.8 : pulse_sigmoid;
+                console.log(pulse_length);
+                if (motionController_right) {
+                    if (new Int8Array(e.data)[0] == 0){
+                        motionController_right.pulse(0, 100);
+                    }
+                    else {
+                        // motionController_right.pulse(1, 100);
+                        motionController_right.pulse(pulse_length/2, 100);
+                    }
+                }
+            });
+            
+
+
+            /////////////////////////////////////////////////////////////////////////
+
+
+			// canvas DOM 要素を取得する
+			let canvas = document.getElementById('renderCanvas');
+
+            canvas.addEventListener("mousewheel", (event) => {
+                event.preventDefault();
+                console.log(event);
+            });
+
+			// Initialize Babylon.js variables.
+			let	sceneToRender;
+            let xrHelper;
+			const createDefaultEngine = function (canvas) {
+                return new BABYLON.Engine(canvas, true, {
+					preserveDrawingBuffer: true,
+					stencil: true
+				});
+            }
+
+            const engine = createDefaultEngine(canvas);
+
+            let camera;
+            let cameraFovDegree = 60;
+
+            let videoDome;
+            let grip = 0;
+
+			//Create scene and create XR experience.
+			const createScene = async function() {
+				//新しいシーンオブジェクトを作成する
+                var scene = new BABYLON.Scene(engine);
+                scene.ambientColor = new BABYLON.Color3(1, 1, 1);
+                // scene.detachControl();
+
+
+                camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", 0, 0, 0, new BABYLON.Vector3(0, 0, 0), scene);
+                camera.setTarget(new BABYLON.Vector3(0, 0, 1));
+                camera.detachControl();
+                // Camera の操作を canvas 上で可能にする
+    			// camera.attachControl(canvas, true);
+                // camera.panningAxis._x = 0; //水平移動無し。
+                // camera.panningAxis._y = 0; //垂直移動無し。
+                // if (camera.inputs.attached.keyboard) {
+                //     camera.inputs.attached.keyboard.detachControl();
+                // }
+                // if (camera.inputs.attached.pointers) {
+                //     camera.inputs.attached.pointers.multiTouchPanAndZoom = false;
+                //     camera.inputs.attached.pointers.multiTouchPanning = false;
+                //     camera.inputs.attached.pointers.pinchInwards = false;
+                //     camera.inputs.attached.pointers.pinchZoom = false;
+                //     camera.inputs.attached.pointers.angularSensibilityX = 3000;
+                //     camera.inputs.attached.pointers.angularSensibilityY = 3000;
+                // }
+                // if (camera.inputs.attached.mousewheel) {
+                //     camera.inputs.attached.mousewheel.detachControl();
+                // }
+
+                var arrow_mat = new BABYLON.StandardMaterial("arrow_mat", scene);
+                    arrow_mat.alpha = 0.3;
+                    arrow_mat.ambientColor = new BABYLON.Color3(0, 1, 0);
+                let front_arrow_box = BABYLON.MeshBuilder.CreateBox("arrow_box", {width: 1, height: 1, depth: 6}, scene);
+                    front_arrow_box.position = new BABYLON.Vector3(0, -3, 3);
+                    front_arrow_box.material = arrow_mat;
+                var front_arrow_cylinder = BABYLON.MeshBuilder.CreateCylinder("arrow_cylinder", {height: 0.1, diameter: 4, tessellation: 3}, scene);
+                    front_arrow_cylinder.position = new BABYLON.Vector3(0, -3, 7);
+                    front_arrow_cylinder.rotation = new BABYLON.Vector3(0, -Math.PI/2.0, 0)
+                    front_arrow_cylinder.material = arrow_mat;
+
+                let count = 0;
+                let midle_buttonPressed = false;
+                let index_buttonPressed = false;
+                let ox = 0, oy = 0, oz = 0;
+                let old_ox = 0, old_oy = 0, old_oz = 0;
+                let dx = 0, dy = 0, dz = 0;
+                let old_phi = 0;
+
+                scene.onPointerObservable.add((pointerInfo) => {
+                    dx = pointerInfo.pickInfo.ray.direction.x;
+                    dy = pointerInfo.pickInfo.ray.direction.y;
+                    dz = pointerInfo.pickInfo.ray.direction.z;
+
+                    ox = pointerInfo.pickInfo.ray.origin.x;
+                    oy = pointerInfo.pickInfo.ray.origin.y;
+                    oz = pointerInfo.pickInfo.ray.origin.z;
+                });
+
+                let dt = 0.1; // 送信間隔 (単位：秒)
+
+                setInterval(function() {
+                    if (midle_buttonPressed && ws.readyState == 1) {
+                        let phi = Math.sign(dz) * Math.acos((dx)/Math.sqrt(((dx)*(dx) + (dz)*(dz)))) /Math.PI * 180;
+                        ws.send(new Int8Array([(ox - old_ox)/dt*100, (oy - old_oy)/dt*100, (oz - old_oz)/dt*100, grip*100, (phi-old_phi)/dt]));
+                        // console.log(new Int8Array([(ox - old_ox)/dt*100, (oy - old_oy)/dt*100, (oz - old_oz)/dt*100, grip*100, (phi-old_phi)/dt]));
+                        // console.log(phi-old_phi);
+                        old_phi = phi;
+                    }
+                    else {
+                        ws.send(new Int8Array([0, 0, 0, grip*100, 0]));
+                    }
+                    old_ox = ox;
+                    old_oy = oy;
+                    old_oz = oz;
+                }, dt*1000);
+
+                // Create a default environment for the scene.
+				var environment = scene.createDefaultEnvironment();
+                // environment.ground.parent.position.y = 0;
+                // environment.ground.position.y = 0
+
+
+                // Initialize XR experience with default experience helper.
+				xrHelper = await scene.createDefaultXRExperienceAsync({
+                    // floorMeshes: [environment.ground]
+                });
+
+                //===Stick=====================================================================================================
+                //==============================================================================================================
+				if (!xrHelper.baseExperience) {
+					// XR support is unavailable.
+					console.log('WebXR support is unavailable');
+
+				}
+                else {
+					// XR support is available; proceed.
+
+                    xrHelper.teleportation.rotationAngle = 0;
+                    xrHelper.input.xrCamera.setTarget(new BABYLON.Vector3(0, 0, 1));
+                    xrHelper.teleportation.rotationEnabled = false;
+
+                    xrHelper.input.onControllerAddedObservable.add((controller) => {
+                        controller.onMotionControllerInitObservable.add((motionController) => {
+                            if (motionController.handness === 'right') {
+                                const xr_ids = motionController.getComponentIds();
+                                motionController_right = motionController;
+                                let thumbstickComponent = motionController.getComponent(xr_ids[2]);
+                                thumbstickComponent.onAxisValueChangedObservable.add((axes) => {
+                                });
+                                let triggerComponent = motionController.getComponent(xr_ids[0]);//xr-standard-trigger
+                                triggerComponent.onButtonStateChangedObservable.add((event) => {
+                                    // get trigger
+                                    grip = triggerComponent.value;
+                                    index_buttonPressed = triggerComponent.pressed;
+                                });
+                                let squeezeComponent = motionController.getComponent(xr_ids[1]);//squeeze
+                                squeezeComponent.onButtonStateChangedObservable.add(() => {
+                                    if (squeezeComponent.value > 0.5) {
+                                        midle_buttonPressed = true;
+                                    }
+                                    else {
+                                        midle_buttonPressed = false;
+                                    }
+                                });
+                                let abuttonComponent = motionController.getComponent(xr_ids[3]);//a-button
+                                abuttonComponent.onButtonStateChangedObservable.add(() => {
+                                    if (abuttonComponent.pressed) {
+                                    }
+                                });
+                                let bbuttonComponent = motionController.getComponent(xr_ids[4]);//b-button
+                                bbuttonComponent.onButtonStateChangedObservable.add(() => {
+                                    if (bbuttonComponent.pressed) {
+                                        // buttonPressed = true;
+                                        // console.log(motionController.pulse(0.5, 2000));
+                                    }
+                                    else {
+                                        // buttonPressed = false;
+                                        // old_buttonPressed = false;
+                                    }
+                                });
+                            }
+                            if (motionController.handness === 'left') {
+                                const xr_ids = motionController.getComponentIds();
+                                let thumbstickComponent = motionController.getComponent(xr_ids[2]);
+                                thumbstickComponent.onAxisValueChangedObservable.add((axes) => {
+
+                                });
+                                let triggerComponent = motionController.getComponent(xr_ids[0]);//xr-standard-trigger
+                                triggerComponent.onButtonStateChangedObservable.add((event) => {
+
+                                });
+                            }
+                        });
+                    });
+
+                    xrHelper.baseExperience.onStateChangedObservable.add((state) => {
+                        camera.alpha = -Math.PI / 2;
+                        camera.beta = Math.PI / 2;
+                        if(state === BABYLON.WebXRState.IN_XR){
+
+
+                        }
+                        else if (state === BABYLON.WebXRState.NOT_IN_XR) {
+
+                        }
+                        console.log(state);
+                    });
+
+				}
+
+                return scene;
+            }
+
+			// Create scene.
+			scene = createScene();
+			scene.then(function (returnedScene) {
+				sceneToRender = returnedScene;
+			});
+            engine.runRenderLoop(function () {
+				if (sceneToRender) {
+					sceneToRender.render();
+				}
+			});
+            // engine.runRenderLoop(function () {
+			// 	scene.render();
+			// });
+
+
+			// Handle browser resize.
+			window.addEventListener('resize', function () {
+				engine.resize();
+			});
+        </script>
+    </body>
+</html>

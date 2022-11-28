@@ -1,0 +1,15 @@
+manabe	24	right	0	0	50	v	p1	20524
+manabe	24	right	0	0	50	v	p2	22460
+manabe	24	right	1	0	50	v	p3	10266
+manabe	24	right	1	0	50	v	p3	26425
+manabe	24	right	0	650	50	e	p1	16437
+manabe	24	right	1	650	50	e	p1	47791
+manabe	24	right	0	650	50	e	p3	24234
+manabe	24	right	1	650	50	e	p3	41543
+manabe	24	right	2	650	50	e	p3	22928
+manabe	24	right	3	650	50	e	p3	16623
+manabe	24	right	4	650	50	e	p3	53124
+manabe	24	right	0	650	50	e	p2	23423
+manabe	24	right	0	650	50	n	p2	25929
+manabe	24	right	0	650	50	n	p1	26838
+manabe	24	right	0	650	50	n	p3	21878

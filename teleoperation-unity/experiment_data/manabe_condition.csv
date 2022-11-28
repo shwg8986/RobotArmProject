@@ -1,0 +1,10 @@
+subject,stimulation,position,seed_p,seed_s
+manabe,v,p1,0.101023548,0.76326405
+manabe,v,p2,0.941189444,
+manabe,v,p3,0.377610278,
+manabe,e,p1,0.519368157,0.4803303
+manabe,e,p3,0.988060236,
+manabe,e,p2,0.63603886,
+manabe,n,p2,0.421835899,0.036045377
+manabe,n,p1,0.757506908,
+manabe,n,p3,0.196966768,
